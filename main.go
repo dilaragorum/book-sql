@@ -28,6 +28,7 @@ var connectionPool *sql.DB
 
 func init() {
 	var err error
+	// Go driver aracılığı ile Postgresql veritabanına bağlanıp connectionPool döndürüyor (mesela 100 connection).
 	connectionPool, err = sql.Open("postgres", "postgres://postgres:postgres@localhost?sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
