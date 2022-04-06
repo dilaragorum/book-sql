@@ -36,8 +36,32 @@ func init() {
 func main() {
 	router := httprouter.New()
 	router.GET("/books", GetBooks)
+	router.GET("/books/:isbn", GetBook)
 
 	log.Fatal(http.ListenAndServe(":8080", router))
+}
+
+func GetBook(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	isbn := ps.ByName("isbn")
+	if isbn == "" {
+		http.Error(w, "ISBN cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	book := Book{}
+	//DB.QueryRow() is used for SELECT queries which return a single row.
+	row := connectionPool.QueryRow("SELECT * FROM books WHERE isbn = $1", isbn)
+	err := row.Scan(&book.isbn, &book.title, &book.author, &book.price)
+	if err == sql.ErrNoRows {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "error when scanning book struct", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "%s %s %s %f\n", book.isbn, book.title, book.author, book.price)
 }
 
 func GetBooks(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -54,6 +78,7 @@ func GetBooks(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 // Kitapları DB'den getirebilmek için yukarıdaki connection'u burada kullanmamız gerekiyor Query yaparken.
 func GetAllBooksFromDB(connectionPool *sql.DB) ([]Book, error) {
+	//DB.Query() is used for SELECT queries which return multiple rows.
 	rows, err := connectionPool.Query("SELECT * FROM books")
 	if err != nil {
 		return []Book{}, err
