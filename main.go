@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/lib/pq"
@@ -12,10 +13,10 @@ import (
 // Golang <----DRIVER(pq)-----> DB PostgreSQL
 
 type Book struct {
-	isbn   string
-	title  string
-	author string
-	price  float32
+	Isbn   string  `json:"isbn"`
+	Title  string  `json:"title"`
+	Author string  `json:"author"`
+	Price  float32 `json:"price"`
 }
 
 // *sql.DB türünde connectionPool tanımlıyorum. Global tanımlamamın sebebi aşağıdaki örnekte init içerisinde
@@ -37,8 +38,53 @@ func main() {
 	router := httprouter.New()
 	router.GET("/books", GetBooks)
 	router.GET("/books/:isbn", GetBook)
+	router.POST("/books/create", CreateBook)
 
 	log.Fatal(http.ListenAndServe(":8080", router))
+}
+
+/*
+{
+	isbn: "",
+ 	author: "",
+	title: "",
+	price: 10
+}
+*/
+
+/*
+curl -X POST localhost:8080/books/create \
+-H 'Content-Type: application/json' \
+-d '{ "isbn": "dilara", "author": "Dilara", "title": "Dilaranın Kitabı", "price": 0 }'
+*/
+func CreateBook(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	var book Book
+	// json.NewDecoder -  istek atılan json request body'i go struct'ımıza decode ediyoruz.
+	// Sonra decode ettiğimiz json'u, Decode(&book) ile book'a atıyoruz.
+	err := json.NewDecoder(r.Body).Decode(&book)
+	if err != nil {
+		http.Error(w, "body malformed", http.StatusBadRequest)
+		return
+	}
+
+	// DB.Exec() is used for statements which don’t return rows (like INSERT and DELETE).
+	result, err := connectionPool.
+		Exec("INSERT INTO books VALUES($1, $2, $3, $4)", book.Isbn, book.Title, book.Author, book.Price)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// The sql.Result() interface guarantees two methods: LastInsertId() – which is often used to return
+	//the value of an new auto increment id, and RowsAffected() – which contains the number of rows
+	//that the statement affected.
+	numberOfRowsAffected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "Book %s created successfully (%d row affected)\n", book.Isbn, numberOfRowsAffected)
 }
 
 func GetBook(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -51,7 +97,7 @@ func GetBook(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	book := Book{}
 	//DB.QueryRow() is used for SELECT queries which return a single row.
 	row := connectionPool.QueryRow("SELECT * FROM books WHERE isbn = $1", isbn)
-	err := row.Scan(&book.isbn, &book.title, &book.author, &book.price)
+	err := row.Scan(&book.Isbn, &book.Title, &book.Author, &book.Price)
 	if err == sql.ErrNoRows {
 		http.NotFound(w, r)
 		return
@@ -61,7 +107,7 @@ func GetBook(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	fmt.Fprintf(w, "%s %s %s %f\n", book.isbn, book.title, book.author, book.price)
+	fmt.Fprintf(w, "%s %s %s %f\n", book.Isbn, book.Title, book.Author, book.Price)
 }
 
 func GetBooks(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -72,7 +118,7 @@ func GetBooks(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	for _, book := range books {
-		fmt.Fprintf(w, "%s %s %s %f\n", book.isbn, book.title, book.author, book.price)
+		fmt.Fprintf(w, "%s %s %s %f\n", book.Isbn, book.Title, book.Author, book.Price)
 	}
 }
 
@@ -88,7 +134,7 @@ func GetAllBooksFromDB(connectionPool *sql.DB) ([]Book, error) {
 	books := make([]Book, 0)
 	for rows.Next() {
 		bk := Book{}
-		err := rows.Scan(&bk.isbn, &bk.title, &bk.author, &bk.price)
+		err := rows.Scan(&bk.Isbn, &bk.Title, &bk.Author, &bk.Price)
 		if err != nil {
 			return []Book{}, err
 		}
