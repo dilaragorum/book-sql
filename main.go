@@ -16,16 +16,34 @@ type Book struct {
 	price  float32
 }
 
-// database/sql
 func main() {
-	db, err := sql.Open("postgres", "postgres://postgres:postgres@localhost?sslmode=disable")
+	connectionPool, err := connectDB()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	rows, err := db.Query("SELECT * FROM books")
+	books, err := GetAllBooksFromDB(connectionPool)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	for _, book := range books {
+		fmt.Println(book.price, book.title, book.isbn, book.author)
+	}
+}
+
+func connectDB() (*sql.DB, error) {
+	connectionPool, err := sql.Open("postgres", "postgres://postgres:postgres@localhost?sslmode=disable")
+	if err != nil {
+		return nil, err
+	}
+	return connectionPool, nil
+}
+
+func GetAllBooksFromDB(connectionPool *sql.DB) ([]Book, error) {
+	rows, err := connectionPool.Query("SELECT * FROM books")
+	if err != nil {
+		return []Book{}, err
 	}
 	defer rows.Close()
 
@@ -34,17 +52,14 @@ func main() {
 		bk := Book{}
 		err := rows.Scan(&bk.isbn, &bk.title, &bk.author, &bk.price)
 		if err != nil {
-			log.Fatal(err)
+			return []Book{}, err
 		}
 		books = append(books, bk)
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Fatal(err)
+		return []Book{}, err
 	}
 
-	for _, book := range books {
-		fmt.Println(book.price, book.title, book.isbn, book.author)
-	}
-
+	return books, nil
 }
